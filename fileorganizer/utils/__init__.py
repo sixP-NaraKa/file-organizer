@@ -1,7 +1,7 @@
 from .fileutils import FileInfo
-from .dateutils import CreatedAtDatetimeInfo
+from .dateutils import DatetimeInfo
 
 __all__ = [
     "FileInfo",
-    "CreatedAtDatetimeInfo",
+    "DatetimeInfo",
 ]

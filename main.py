@@ -1,6 +1,8 @@
 import os
 import pathlib
 import shutil
+import threading
+import time
 from typing import Tuple, List
 
 import PySimpleGUI as sG
@@ -16,7 +18,10 @@ file_extension_patterns: Tuple = (".png", ".PNG",
                                   ".mp3", ".MP3", ".mp4", ".MP4", ".m4a", ".M4A")
 
 
-def organize_files(root: str, output_dir: str) -> Tuple[List[pathlib.Path], List[pathlib.Path]]:
+organize_finished_event = "-ORGANIZE FINISHED-"
+
+
+def organize_files(window: sG.Window, root: str, output_dir: str) -> None:  # -> Tuple[List[pathlib.Path], List[pathlib.Path]]:
     found_files: List[pathlib.Path] = []
     copied_files: List[pathlib.Path] = []
     # for rootdir, dirnames, filenames in os.walk(u"C:\\Users\\Naraka\\PycharmProjects\\file-organizer"):
@@ -43,10 +48,12 @@ def organize_files(root: str, output_dir: str) -> Tuple[List[pathlib.Path], List
 
     print(f"Found {len(found_files)} file(s) matching the given patterns {glob_file_extension_patterns}:")
     print(found_files)
+
+    # TODO: update progressbar here, as we know how many files we have found
     for file in found_files:
         fileinfo: FileInfo = FileInfo(orig_path=file)
 
-        output = f"{fileinfo.datetimeinfo.month}-{fileinfo.datetimeinfo.year} Sicherung"
+        output = f"{fileinfo.datetimeinfo.created_at.month}-{fileinfo.datetimeinfo.created_at.year} Sicherung"
         # _out = pathlib.Path(root + os.sep + "copiedfiles" + os.sep + output)
         _out = pathlib.Path(output_dir + os.sep + output)
         if not _out.exists():
@@ -58,21 +65,36 @@ def organize_files(root: str, output_dir: str) -> Tuple[List[pathlib.Path], List
             fileinfo.dst_path = dst_file_path
             copied_files.append(dst_file_path)
 
-    return found_files, copied_files
+    window.write_event_value("-ORGANIZE FINISHED-", (found_files, copied_files))
+
+
+def progress(thread: threading.Thread, window: sG.Window) -> None:
+    # https://github.com/PySimpleGUI/PySimpleGUI/issues/535
+    window["-PROGRESS BAR-"].update(bar_color=("white", "green"), visible=True)
+    while thread.is_alive():
+        window["-PROGRESS BAR-"].Widget["value"] += window["-PROGRESS BAR-"].metadata
+        time.sleep(0.1)
+    window["-PROGRESS BAR-"].update(bar_color=("white", "green"))
 
 
 def make_gui():
     layout: List[List[sG.Element]] = [
         [
-            sG.FolderBrowse(button_text="Select a directory to find files in", key="-ROOT-"),
-            sG.Input(readonly=True),
+            sG.FolderBrowse(button_text="Select directory with files", key="-ROOT-"),
+            sG.Push(),
+            sG.Input(readonly=True, text_color="blue"),
         ],
         [
-            sG.FolderBrowse(button_text="Select a output directory", key="-OUTPUT-"),
-            sG.Input(readonly=True),
+            sG.FolderBrowse(button_text="Select output directory", key="-OUTPUT-"),
+            sG.Push(),
+            sG.Input(readonly=True, text_color="blue"),
+        ],
+        [
+            sG.HorizontalSeparator(pad=((5, 5), (10, 10))),
         ],
         [
             sG.Button(button_text="Organize Files", key="-RUN-"),
+            sG.ProgressBar(max_value=100, size=(30, 10), key="-PROGRESS BAR-", metadata=25, visible=False, border_width=2),
         ],
     ]
     window: sG.Window = sG.Window(title=f"File Organizer", layout=layout, finalize=True, resizable=False)
@@ -80,7 +102,10 @@ def make_gui():
 
 
 def main():
+    sG.theme("Material2")
     window = make_gui()
+    # https://github.com/PySimpleGUI/PySimpleGUI/issues/2599
+    window["-PROGRESS BAR-"].Widget.config(mode="indeterminate")
     while True:
         event, values = window.read()
         if event == sG.WINDOW_CLOSED or event == "Quit":
@@ -91,11 +116,19 @@ def main():
             print(root_dir, output_dir)
             print(event, values)
             if not root_dir == output_dir:
-                found_files, copied_files = organize_files(root_dir, output_dir)
-                sG.Popup(f"Found {len(found_files)} file(s) during search. \n"
-                         f"Copied {len(copied_files)} file(s) to the specified destination folder "
-                         f"{'(as they were not yet present)' if len(copied_files) > 0 else '(as they were already present)'}. ",
-                         title="Finished!")
+                # new thread to search for files
+                organize_thread: threading.Thread = threading.Thread(target=organize_files,
+                                                                     args=(window, root_dir, output_dir,),
+                                                                     daemon=True)
+                organize_thread.start()
+                # thread to show progress bar until above thread is working
+                threading.Thread(target=progress, args=(organize_thread, window), daemon=True).start()
+        elif event == organize_finished_event:
+            found_files, copied_files = values[event]
+            sG.Popup(f"Found {len(found_files)} file(s) during search. \n"
+                     f"Copied {len(copied_files)} file(s) to the specified destination folder "
+                     f"{'(as they were not yet present)' if len(copied_files) > 0 else '(as they were already present)'}. ",
+                     title="Finished!")
         else:
             print(event, values)
 
