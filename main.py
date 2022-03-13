@@ -27,7 +27,7 @@ def organize_files(window: sG.Window, root: str, output_dir: str, is_move_files_
     copied_files: List[pathlib.Path] = []
     for rootdir, dirnames, filenames in os.walk(root):
         for file in filenames:
-            f_path = pathlib.Path(os.path.join(root, file))
+            f_path = pathlib.Path(os.path.join(rootdir, file))
             if f_path.suffix in file_extension_patterns:
                 found_files.append(f_path)
 
