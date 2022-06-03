@@ -2,7 +2,7 @@ import os
 import pathlib
 import shutil
 import threading
-from typing import Tuple, List
+from typing import Tuple, List, Callable
 
 import PySimpleGUI as sG
 
@@ -31,6 +31,7 @@ def organize_files(window: sG.Window, root: str, output_dir: str, is_move_files_
             if f_path.suffix in file_extension_patterns:
                 found_files.append(f_path)
 
+    shutil_copy_or_move: Callable = shutil.move if is_move_files_selected else shutil.copy
     # https://github.com/PySimpleGUI/PySimpleGUI/issues/4659 ...
     window["-PROGRESS BAR-"].update(0, bar_color=("black", "white"), visible=True, max=len(found_files))
     for file in found_files:
@@ -44,10 +45,7 @@ def organize_files(window: sG.Window, root: str, output_dir: str, is_move_files_
 
         dst_file_path = pathlib.Path(f"{_out}{os.sep}{file.name}")
         if not dst_file_path.exists():
-            if is_move_files_selected:
-                shutil.move(file, _out)
-            else:
-                shutil.copy(file, _out)
+            shutil_copy_or_move(file, _out)
             fileinfo.dst_path = dst_file_path
             copied_files.append(dst_file_path)
 
